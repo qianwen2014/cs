@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Juno labels</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --main-sans: "PingFang SC", "Microsoft YaHei", sans-serif;
+  --main-serif:"Noto Serif SC",serif;
+  --pink:#f8f4f7;
+  --border:#d2c6cf;
+  --shadow:rgba(0,0,0,.08);
+}
+html,body{margin:0;padding:0;background:var(--pink);font:13px/1.5 var(--main-sans)}
+#wrap{max-width:960px;margin:30px auto;padding:0 20px;text-align:center}
+h1,h2,h3,h4,button,input{font-family:var(--main-sans)}
+input[type=file]{margin-right:8px}
+input.edit, #search{
+  width:100%;max-width:460px;
+  padding:6px 10px;margin:6px 0;
+  border:1px solid var(--border);border-radius:6px;
+  box-shadow:0 1px 2px var(--shadow) inset;
+}
+#label{
+  width:10cm;height:8cm;margin:20px auto 0;
+  border:1px solid var(--border);border-radius:8px;
+  background:#fff;box-shadow:0 3px 8px var(--shadow);
+  padding:0.9cm 1cm;box-sizing:border-box;overflow:hidden;
+  font-family:var(--main-serif);position:relative;
+  text-align:left; /* 标签内容左对齐 */
+}
+#label h1{margin:0 0 6px;font-size:17px;text-align:center;font-weight:600}
+.row{display:flex;justify-content:space-between;margin:2px 0}
+.small{font-size:12px}
+#fixed{margin-top:6px;font-size:12px}
+#volumeLine{display:flex;justify-content:space-between;margin-top:4px;font-weight:600;align-items:flex-end}
+#volumeLine span:last-child{font-size:17px}
+#extra{
+  margin:12px auto 0;
+  font-size:12px;
+  color:#555;
+  text-align:center;
+  max-width:10cm;
+}
+button{
+  padding:8px 16px;font-size:14px;margin-top:15px;
+  background:#f7e8f1;border-radius:5px;cursor:pointer;
+  width:100%;max-width:460px;
+  box-shadow:0 1px 3px rgba(0,0,0,.1);
+}
+button:hover{background:#f3d9e5}
+@media print{
+  body{background:#fff}
+  #wrap{margin:0;max-width:none;padding:0}
+  input, #extra{display:none}
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Juno's Labels</h1>
+
+  <div id="tools">
+    <div>
+      <input type="file" id="file" accept=".csv">
+    </div>
+    <div>
+      <input id="search" list="lst" placeholder="输入编码 / 中英文名 / 年份 / 净含量">
+      <datalist id="lst"></datalist>
+    </div>
+    <div>
+      身份：<input class="edit" id="roleInput" value="进口商" placeholder="身份（进口商 / 经销商…）">
+    </div>
+    <div>
+      名称：<input class="edit" id="impInput" placeholder="名称">
+    </div>
+    <div>
+      地址：<input class="edit" id="addrInput" placeholder="地址">
+    </div>
+    <div>
+      电话：<input class="edit" id="phoneInput" placeholder="电话">
+    </div>
+    <div>
+      <button id="submitBtn">提交</button>
+    </div>
+  </div>
+
+  <div id="extra" hidden>编码：<span id="codeOut"></span>　外文名：<span id="enOut"></span></div>
+
+  <div id="label" hidden>
+    <h1 id="cn"></h1>
+    <div class="row"><span>原产国：<span id="country"></span></span><span>产品类型：<span id="type"></span></span></div>
+    <div class="row"><span>酒精度：<span id="abv"></span></span><span>年份：<span id="year"></span></span></div>
+
+    <div class="small">原料与辅料：葡萄汁、二氧化硫</div>
+    <div class="small">贮存条件：避免光照，阴凉干燥处保存</div>
+    <div class="small">灌装日期：<span id="date"></span></div>
+    <div class="small">境外生产商在华注册编号：<span id="reg"></span></div>
+    <div class="small"><span id="roleLabel">进口商</span>：<span id="importer"></span></div>
+    <div id="addrLine" class="small"></div>
+
+    <div id="volumeLine"><span>过量饮酒 有害健康</span><span id="volume"></span></div>
+  </div>
+
+  <div id="signature" style="font-size:12px;color:#555;margin-top:20px;text-align:center;">
+    由 Victor 亲自设计 | Juno's Labels 版权
+  </div>
+
+</div>
+
+<script>
+const map={'中文品名':'cn','外文品名':'en','原产国外文':'country','产品类型':'type','酒精度':'abv',
+           '年份':'year','生产(灌装)日期':'date','生产企业在华注册编号':'reg','净含量':'volume','款号':'code'};
+let table=[],lst=document.getElementById('lst'),input=document.getElementById('search');
+const roleIn=ge('roleInput'),impIn=ge('impInput'),addrIn=ge('addrInput'),phoneIn=ge('phoneInput'),
+      roleLabel=ge('roleLabel'),codeOut=ge('codeOut'),enOut=ge('enOut');
+
+ge('file').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    const txt=new TextDecoder('gb18030').decode(ev.target.result).replace(/^\uFEFF/,'');
+    const deli=[',',';','\t'].find(d=>txt.includes(d))||',';
+    const rows=txt.trim().split(/\r?\n/).map(l=>l.split(deli));
+    const head=rows.shift().map(h=>h.trim());
+    table=rows.map(r=>Object.fromEntries(head.map((h,i)=>[h,r[i]?.trim()||''])));
+    lst.innerHTML='';
+    table.forEach(d=>{
+      const opt=document.createElement('option');
+      opt.value=`${d['款号']} ${d['外文品名']} ${d['中文品名']} ${d['年份']} ${d['净含量']}`;
+      opt.dataset.code=d['款号'] || '';
+      lst.appendChild(opt);
+    });
+    alert('CSV 已导入');
+  }; rd.readAsArrayBuffer(f);
+};
+
+function preset(imp){
+  if(imp==='浙江燕达贸易有限公司')
+    return ['进口商',imp,'浙江温州市鹿城区车站大道577号财富中心1803室','0577-88101895'];
+  if(imp==='浙江臻万国际贸易有限公司')
+    return ['进口商',imp,'浙江省丽水市青田县油竹街道雅岙路85-94号','0577-88101895'];
+  return ['进口商',imp,'',''];
+}
+
+function syncLabel(){
+  roleLabel.textContent=roleIn.value;
+  ge('importer').textContent=impIn.value;
+  ge('addrLine').textContent=`地址：${addrIn.value}\n电话：${phoneIn.value}`;
+}
+
+function show(d){
+  if(!d)return;
+  Object.entries(map).forEach(([col,id])=>{
+    if(id==='code'||id==='en') return;  // code/en 展示在外面
+    ge(id).textContent=col==='净含量'?`净含量：${d[col]}`:d[col]||'';
+  });
+  [roleIn.value,impIn.value,addrIn.value,phoneIn.value]=preset(d['进口商']);
+  codeOut.textContent=d['款号']||'';
+  enOut.textContent=d['外文品名']||'';
+  ge('extra').hidden=false;
+  syncLabel();
+  ge('label').hidden=false;
+}
+
+function findRecord(keyword){
+  if(!keyword) return undefined;
+  const optMatch = Array.from(lst.options).find(o=>o.value===keyword);
+  if(optMatch && optMatch.dataset.code){
+    return table.find(d=>d['款号']===optMatch.dataset.code);
+  }
+  const lower=keyword.toLowerCase();
+  return table.find(x=>x['款号'].toLowerCase().startsWith(lower)||
+                     x['中文品名'].includes(keyword)||
+                     (x['外文品名']||'').toLowerCase().includes(lower)||
+                     (x['年份']||'').includes(keyword)||
+                     (x['净含量']||'').includes(keyword));
+}
+
+input.oninput=()=>{
+  const raw=input.value.trim(); if(!raw)return;
+  const record=findRecord(raw);
+  if(record){
+    show(record);
+  }
+};
+
+[roleIn,impIn,addrIn,phoneIn].forEach(el=>el.oninput=syncLabel);
+
+function ge(id){return document.getElementById(id)}
+</script>
+</body>
+</html>
